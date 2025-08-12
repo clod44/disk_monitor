@@ -4,6 +4,7 @@ from pywebpush import webpush, WebPushException
 from config_manager import ConfigManager
 from logger import Logger
 from disk_scanner import disk_stats
+import traceback
 
 def send_notification(config_manager, logger, payload):
     VAPID_PUBLIC_KEY = config_manager.get('NOTIFICATIONS', 'vapid_public_key')
