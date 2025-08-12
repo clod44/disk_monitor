@@ -64,34 +64,30 @@ def get_disk_stats():
 
 @app.route('/vapid_public_key', methods=['GET'])
 def get_vapid_public_key_route():
-    key_filename = config_manager.get('NOTIFICATIONS', 'vapid_public_key')    
-    file_path = os.path.join(app.root_path, key_filename)
+    key_file_path = config_manager.get('NOTIFICATIONS', 'vapid_public_key')
     try:
-        with open(file_path, 'r') as f:
+        with open(key_file_path, 'r') as f:
             vapid_public_key = f.read().strip()
         return jsonify({"vapid_public_key": vapid_public_key})
     except FileNotFoundError:
-        return jsonify({"error": f"VAPID public key file not found at {file_path}"}), 500
+        return jsonify({"error": f"VAPID public key file not found at {key_file_path}"}), 500
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
-
-
 @app.route('/subscribed_devices', methods=['GET'])
 def get_subscriptions():
-    filename = config_manager.get('NOTIFICATIONS', 'subscription_file')    
-    file_path = os.path.join(app.root_path, filename)
+    subscription_file = config_manager.get('NOTIFICATIONS', 'subscription_file')
     try:
         content = ""
-        with open(file_path, 'r') as f:
+        with open(subscription_file, 'r') as f:
             content = f.read().strip()
         response = jsonify({"subscribed_devices": content})
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response.headers['Pragma'] = 'no-cache' 
-        response.headers['Expires'] = '0'        
+        response.headers['Expires'] = '0'
         return response
     except FileNotFoundError:
-        return jsonify({"error": f"subscriptions file not found at {file_path}"}), 500
+        return jsonify({"error": f"subscriptions file not found at {subscription_file}"}), 500
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 

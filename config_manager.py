@@ -1,24 +1,29 @@
 import os
 import configparser
 
+# Import the helper functions for path management
+from utils import  get_base_path, get_resource_path
+
 class ConfigManager:
     def __init__(self, config_file='config.ini'):
-        self.config_file = config_file
+        base_dir = get_base_path()
+        self.config_file = os.path.join(base_dir, config_file)
+        
         self.config = configparser.ConfigParser()
         self._default_config = {
             'WEB_SERVER': {
                 'port': '6161',
-                'ssl_cert_path': 'cert.pem',
+                'ssl_cert_path': 'cert.pem', 
                 'ssl_key_path': 'key.pem',
             },
             'DISK_MONITOR': {
                 'disk_path': '/',
                 'log_file': 'disk_monitor.log',
-                'usage_threshold': '90',
+                'usage_threshold': '50',
                 'check_interval_minutes': '5',
             },
             'NOTIFICATIONS': {
-                'enable_notifications': 'False',
+                'enable_notifications': 'True',
                 'vapid_public_key': 'vapid_public_key.txt',
                 'vapid_private_key': 'vapid_private_key.pem',
                 'vapid_email': 'mailto:your.email@example.com',
@@ -54,7 +59,6 @@ class ConfigManager:
                     if key not in self.config[section]:
                         self.config[section][key] = value
                         updated = True
-
         if updated:
             self.write_config()
             print(f"Configuration file '{self.config_file}' is up-to-date.")
@@ -78,11 +82,13 @@ class ConfigManager:
             print(f"Error writing to configuration file '{self.config_file}': {e}")
             
     def get(self, section, key, cast_as=str):
-        value = self.settings.get(section, {}).get(key)
-        
+        value = self.settings.get(section, {}).get(key)        
         if value is None:
             return None
-        
+        # Automatically construct a full path for file-related settings
+        if key.endswith('_path') or key.endswith('_file'):
+            base_dir = get_base_path()
+            return os.path.join(base_dir, value)
         try:
             if cast_as is bool:
                 return self._strtobool_custom(value)

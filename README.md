@@ -12,4 +12,9 @@ currently i am trying to use pyinstaller to convert the whole thing into a singl
 #### development:
  - to activate this python environment: `source venv/bin/activate`
  - run the dev server: `python3 app.py`
+ - pack into a single executable with: `pyinstaller --onefile --add-data="templates:templates" --add-data="static:static" app.py`
+ make sure you are not using old certs. 
 
+
+
+![screenshot.png](screenshot.png)
