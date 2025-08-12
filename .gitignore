@@ -173,3 +173,4 @@ cython_debug/
 
 *.pem
 vapid_public_key.txt
+subscriptions.json
