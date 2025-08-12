@@ -3,6 +3,7 @@ import subprocess
 import socket
 import shutil
 import sys
+from utils import get_base_path
 
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -32,8 +33,9 @@ def generate_ssl_keys(config_manager):
 
     private_ip = get_local_ip()
     common_name = private_ip
-    temp_cnf_path = 'openssl.cnf'
-    
+    base_dir = get_base_path()
+    temp_cnf_path = os.path.join(base_dir, 'openssl.cnf')
+
     try:
         with open(temp_cnf_path, 'w') as f:
             f.write("[req]\n")
@@ -53,19 +55,15 @@ def generate_ssl_keys(config_manager):
             f.write("extendedKeyUsage = serverAuth\n")
             f.write(f"subjectAltName = DNS:localhost, IP:127.0.0.1, IP:{private_ip}\n")
             f.write("\n")
-
         command = [
-            openssl_path, 'req', '-x509', '-nodes', '-days', '365', 
-            '-newkey', 'rsa:2048', '-keyout', key_path, 
-            '-out', cert_path, 
+            openssl_path, 'req', '-x509', '-nodes', '-days', '365',
+            '-newkey', 'rsa:2048', '-keyout', key_path,
+            '-out', cert_path,
             '-config', temp_cnf_path
         ]
-        
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        subprocess.run(command, check=True, cwd=base_dir)
         print(f"Successfully generated '{cert_path}' and '{key_path}'.")
-    except subprocess.CalledProcessError as e:
-        print(f"Error generating SSL keys: {e}")
-        sys.exit(1)
     finally:
         if os.path.exists(temp_cnf_path):
             os.remove(temp_cnf_path)
