@@ -18,7 +18,7 @@ class Logger:
     def log(self, message, level="INFO"):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"[{timestamp}] [{level}] {message}\n"
-        
+        print(log_entry) 
         try:
             with open(self.log_file_path, 'a') as f:
                 f.write(log_entry)

@@ -29,6 +29,12 @@ class ConfigManager:
                 'vapid_email': 'mailto:your.email@example.com',
                 'subscription_file': 'subscriptions.json',
             },
+            'SERVICE': {
+                'service_name': 'disk_monitor.service',
+                'runtime_log_file': 'runtime.log',
+                'user': 'pacs',
+                'group': 'pacs',
+            },
         }
         self.generate_config()
         self.read_config()

@@ -13,6 +13,7 @@ from disk_scanner import disk_stats
 from generate_ssl_keys import generate_ssl_keys
 from generate_vapid_keys import generate_vapid_keys
 from notifications import send_notification, check_disk_warning, save_subscription, unsubscribe
+from service_manager import install_service_from_config
 
 app = Flask(__name__)
 
@@ -163,6 +164,8 @@ if __name__ == '__main__':
         if os.path.exists(ssl_cert_path) and os.path.exists(ssl_key_path):
             ssl_context = (ssl_cert_path, ssl_key_path)
     
+    install_service_from_config(config_manager, logger, "app")
+
     if ssl_context:
         print("Server will run with Flask's development server over SSL. Access via HTTPS.")
         app.run(debug=True, use_reloader=False, host='0.0.0.0', port=port, ssl_context=ssl_context)
