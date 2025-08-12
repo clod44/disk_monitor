@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disk Monitor</title>
+</head>
+
+<body>
+    <div>
+        <h1>Disk Monitor</h1>
+        <p>
+            Get push notifications when your server's disk space is low.
+        </p>
+        <button id="subscribeButton">
+            Enable Notifications
+        </button>
+        <button id="unsubscribeButton">
+            Disable Notifications
+        </button>
+        <button id="testNotificationButton">
+            Send Test Notification
+        </button>
+        <a href="/download-cert" target="_blank">
+            <button>Download Cert</button>
+        </a>
+        <a href="/download-cert-installer" target="_blank">
+            <button>Download Cert Installer</button>
+        </a>
+        <div id="statusMessage"></div>
+        <h2>Disk Status</h2>
+        <pre id="diskStatusRaw">
+...
+        </pre>
+        <hr>
+        <h4>Subscribed devices</h4>
+        <pre id="subscribedDevices" style="white-space: pre-wrap; word-break: break-all;">
+            ...
+        </pre>
+    </div>
+    <script>
+        const subscribeButton = document.getElementById('subscribeButton');
+        const unsubscribeButton = document.getElementById('unsubscribeButton');
+        const testNotificationButton = document.getElementById('testNotificationButton');
+        const statusMessage = document.getElementById('statusMessage');
+        let swRegistration = null;
+
+        // Helper function to convert a VAPID key string to a Uint8Array.
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        async function updateDiskStatus() {
+            try {
+                const response = await fetch('/disk_stats');
+                const data = await response.json();
+                console.log('Disk stats:', data);
+                document.getElementById('diskStatusRaw').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        // Function to handle UI updates based on subscription status
+        function updateUI(isSubscribed) {
+            if (isSubscribed) {
+                subscribeButton.textContent = 'Subscribed!';
+                subscribeButton.disabled = true;
+                unsubscribeButton.disabled = false;
+                testNotificationButton.disabled = false;
+            } else {
+                subscribeButton.textContent = 'Enable Notifications';
+                subscribeButton.disabled = false;
+                unsubscribeButton.disabled = true;
+                testNotificationButton.disabled = true;
+            }
+        }
+
+        // Function to check subscription status and update the UI
+        async function initialiseUI() {
+            if (swRegistration) {
+                const subscription = await swRegistration.pushManager.getSubscription();
+                updateUI(!!subscription);
+            }
+        }
+
+        // Asynchronous function to handle the subscription process
+        async function subscribeUserToPush() {
+            try {
+                const subscription = await swRegistration.pushManager.getSubscription();
+                if (subscription) {
+                    console.log('User is already subscribed:', subscription);
+                    await fetch('/subscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(subscription)
+                    });
+                    updateUI(true);
+                    return;
+                }
+
+                const response = await fetch('/vapid_public_key');
+                const data = await response.json();
+                const vapidPublicKey = data.vapid_public_key;
+
+                if (!vapidPublicKey) {
+                    console.error('Failed to get VAPID public key from server.');
+                    return;
+                }
+
+                const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
+
+                const newSubscription = await swRegistration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: applicationServerKey
+                });
+
+                console.log('User is subscribed:', newSubscription);
+                await fetch('/subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newSubscription)
+                });
+                updateUI(true);
+                statusMessage.textContent = 'Successfully subscribed to push notifications.';
+            } catch (err) {
+                if (Notification.permission === 'denied') {
+                    console.warn('Push messages are blocked by the user.');
+                } else {
+                    console.error('Failed to subscribe the user: ', err);
+                }
+                statusMessage.textContent = 'Failed to subscribe the user.';
+            }
+        }
+
+        // Asynchronous function to handle the unsubscription process
+        async function unsubscribeUserFromPush() {
+            try {
+                const subscription = await swRegistration.pushManager.getSubscription();
+                if (subscription) {
+                    await subscription.unsubscribe();
+                    console.log('User is unsubscribed from push notifications.');
+                    await fetch('/unsubscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ endpoint: subscription.endpoint })
+                    });
+                    updateUI(false);
+                    statusMessage.textContent = 'Successfully unsubscribed from push notifications.';
+                } else {
+                    console.log('No active subscription found.');
+                    statusMessage.textContent = 'No active subscription found.';
+                }
+            } catch (err) {
+                console.error('Failed to unsubscribe the user:', err);
+                statusMessage.textContent = 'Failed to unsubscribe the user.';
+            }
+        }
+
+        if ('serviceWorker' in navigator && 'PushManager' in window) {
+            console.log('Service Worker and Push API supported.');
+            navigator.serviceWorker.register('{{ url_for("static", filename="service-worker.js") }}')
+                .then(function (swReg) {
+                    console.log('Service Worker is registered', swReg);
+                    swRegistration = swReg;
+                    initialiseUI();
+                })
+                .catch(function (error) {
+                    console.error('Service Worker Error', error);
+                    statusMessage.textContent = 'Service Worker registration failed.';
+                });
+        } else {
+            console.warn('Push notifications not supported by this browser.');
+            subscribeButton.textContent = 'Notifications Not Supported';
+            subscribeButton.disabled = true;
+            unsubscribeButton.disabled = true;
+            statusMessage.textContent = 'Push notifications are not supported on this browser.';
+        }
+
+        subscribeButton.addEventListener('click', function () {
+            if (Notification.permission === 'denied') {
+                statusMessage.textContent = 'You have blocked notifications. Please enable them in your browser settings.';
+                return;
+            }
+            if (Notification.permission === 'granted') {
+                subscribeUserToPush();
+            } else {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        subscribeUserToPush();
+                    } else {
+                        console.warn('User denied permission for notifications.');
+                        statusMessage.textContent = 'Permission to send notifications was denied.';
+                    }
+                });
+            }
+        });
+
+        unsubscribeButton.addEventListener('click', unsubscribeUserFromPush);
+
+        testNotificationButton.addEventListener('click', async function () {
+            try {
+                const response = await fetch('/broadcast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: 'TEST NOTIFICATION.', body: 'This is a test notification from the Disk Monitor.' })
+                });
+                const data = await response.json();
+                console.log('Test notification response:', data.message);
+                if (response.status === 200) {
+                    statusMessage.textContent = 'Test notification sent successfully!';
+                } else {
+                    statusMessage.textContent = `Error: ${data.message}`;
+                }
+            } catch (error) {
+                console.error('Error sending test notification:', error);
+                statusMessage.textContent = 'Failed to send test notification.';
+            }
+        });
+
+        async function fetchSubscribedDevices() {
+            try {
+                const response = await fetch('/subscribed_devices');
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log('Fetched data:', data);
+
+                if (!data || !Array.isArray(JSON.parse(data.subscribed_devices))) {
+                    console.error('Error: "subscribed_devices" property is missing or not an array.');
+                    document.getElementById('subscribedDevices').textContent = 'Data is in an unexpected format.';
+                    return;
+                }
+
+                const myObject = JSON.parse(data.subscribed_devices);
+                console.log('The object to format:', myObject);
+
+                const formattedString = JSON.stringify(myObject, null, 2);
+                console.log('The formatted string:', formattedString);
+
+                const subscribedDevicesElement = document.getElementById('subscribedDevices');
+                if (subscribedDevicesElement) {
+                    subscribedDevicesElement.textContent = formattedString;
+                } else {
+                    console.error('Error: Element with ID "subscribedDevices" not found.');
+                }
+
+            } catch (error) {
+                console.error('Error fetching subscribed devices:', error);
+                const subscribedDevicesElement = document.getElementById('subscribedDevices');
+                if (subscribedDevicesElement) {
+                    subscribedDevicesElement.textContent = `Failed to load subscribed devices: ${error.message}`;
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await updateDiskStatus();
+            await fetchSubscribedDevices();
+        });
+    </script>
+</body>
+
+</html>
