@@ -1,9 +1,15 @@
 import os
-import subprocess
-import socket
-import shutil
 import sys
+import socket
+import ipaddress
+from datetime import datetime, timedelta
+
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from utils import get_base_path
+from config_manager import ConfigManager
 
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -19,54 +25,68 @@ def get_local_ip():
 def generate_ssl_keys(config_manager):
     cert_path = config_manager.get('WEB_SERVER', 'ssl_cert_path')
     key_path = config_manager.get('WEB_SERVER', 'ssl_key_path')
-
+    
     if os.path.exists(cert_path) and os.path.exists(key_path):
         print("SSL certificate and key files already exist. Skipping generation.")
         return
-
+        
     print("Generating a new self-signed SSL certificate and key...")
+    try:
+        key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+            backend=default_backend()
+        )
+        
+        private_ip = get_local_ip()
+        common_name = private_ip
+        
+        subject = issuer = x509.Name([
+            x509.NameAttribute(x509.oid.NameOID.COUNTRY_NAME, u"TR"),
+            x509.NameAttribute(x509.oid.NameOID.STATE_OR_PROVINCE_NAME, u"ISTANBUL"),
+            x509.NameAttribute(x509.oid.NameOID.LOCALITY_NAME, u"Kadikoy"),
+            x509.NameAttribute(x509.oid.NameOID.ORGANIZATION_NAME, u"Disk Monitor Project"),
+            x509.NameAttribute(x509.oid.NameOID.COMMON_NAME, common_name),
+        ])
+        
+        san_ext = x509.SubjectAlternativeName([
+            x509.DNSName(u"localhost"),
+            x509.IPAddress(ipaddress.IPv4Address(u"127.0.0.1")),
+            x509.IPAddress(ipaddress.IPv4Address(private_ip))
+        ])
+        
+        cert = x509.CertificateBuilder().subject_name(
+            subject
+        ).issuer_name(
+            issuer
+        ).public_key(
+            key.public_key()
+        ).serial_number(
+            x509.random_serial_number()
+        ).not_valid_before(
+            datetime.utcnow()
+        ).not_valid_after(
+            datetime.utcnow() + timedelta(days=365)
+        ).add_extension(
+            san_ext, critical=False,
+        ).sign(key, hashes.SHA256(), default_backend())
+        
+        with open(key_path, "wb") as f:
+            f.write(key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            ))
+            
+        with open(cert_path, "wb") as f:
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
+            
+        print(f"Successfully generated '{cert_path}' and '{key_path}'.")
 
-    openssl_path = shutil.which('openssl')
-    if not openssl_path:
-        print("Error: 'openssl' command not found. Please install openssl to generate keys.")
+    except Exception as e:
+        print(f"Error generating SSL keys: {e}")
         sys.exit(1)
 
-    private_ip = get_local_ip()
-    common_name = private_ip
-    base_dir = get_base_path()
-    temp_cnf_path = os.path.join(base_dir, 'openssl.cnf')
-
-    try:
-        with open(temp_cnf_path, 'w') as f:
-            f.write("[req]\n")
-            f.write("distinguished_name = req_distinguished_name\n")
-            f.write("x509_extensions = v3_req\n")
-            f.write("prompt = no\n")
-            f.write("\n")
-            f.write("[req_distinguished_name]\n")
-            f.write("C = TR\n")
-            f.write("ST = ISTANBUL\n")
-            f.write("L = Kadikoy\n")
-            f.write("O = Disk Monitor Project\n")
-            f.write(f"CN = {common_name}\n")
-            f.write("\n")
-            f.write("[v3_req]\n")
-            f.write("keyUsage = nonRepudiation, digitalSignature, keyEncipherment\n")
-            f.write("extendedKeyUsage = serverAuth\n")
-            f.write(f"subjectAltName = DNS:localhost, IP:127.0.0.1, IP:{private_ip}\n")
-            f.write("\n")
-        command = [
-            openssl_path, 'req', '-x509', '-nodes', '-days', '365',
-            '-newkey', 'rsa:2048', '-keyout', key_path,
-            '-out', cert_path,
-            '-config', temp_cnf_path
-        ]
-
-        subprocess.run(command, check=True, cwd=base_dir)
-        print(f"Successfully generated '{cert_path}' and '{key_path}'.")
-    finally:
-        if os.path.exists(temp_cnf_path):
-            os.remove(temp_cnf_path)
 
 if __name__ == '__main__':
     print("Running SSL key generation script...")
